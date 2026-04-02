@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
 import type { Settings, MessageTemplate } from '@/lib/types'
-import { Bot, Plus, Pencil, Trash2, X, Check, FileText } from 'lucide-react'
+import { Bot, Plus, Pencil, Trash2, X, Check, FileText, RefreshCw } from 'lucide-react'
 
 type TemplateForm = { name: string; body: string }
 
@@ -11,11 +11,14 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [templates, setTemplates] = useState<MessageTemplate[]>([])
   const [saving, setSaving] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [syncMsg, setSyncMsg] = useState<string | null>(null)
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editingTpl, setEditingTpl] = useState<MessageTemplate | null>(null)
   const [tplForm, setTplForm] = useState<TemplateForm>({ name: '', body: '' })
   const [tplSaving, setTplSaving] = useState(false)
+
 
   useEffect(() => {
     Promise.all([
@@ -34,6 +37,19 @@ export default function SettingsPage() {
     setSaving(true)
     await api.settings.update({ global_auto_reply: next })
     setSaving(false)
+  }
+
+  async function handleSyncSheet() {
+    setSyncing(true)
+    setSyncMsg(null)
+    try {
+      await api.contacts.syncSheet()
+      setSyncMsg('Sync triggered — contacts will update shortly')
+    } catch (err: unknown) {
+      setSyncMsg(err instanceof Error ? err.message : 'Sync failed')
+    } finally {
+      setSyncing(false)
+    }
   }
 
   function openNewTemplate() {
@@ -102,6 +118,36 @@ export default function SettingsPage() {
               <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${globalOn ? 'translate-x-6' : 'translate-x-0'}`} />
             </button>
           </div>
+        </div>
+
+        {/* Google Sheet sync */}
+        <div className="glass rounded-card p-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center bg-white/5 text-slate-400">
+                <RefreshCw size={18} />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-white">Sync Contacts</p>
+                <p className="text-xs text-slate-500 mt-0.5">Pull latest leads from Google Sheet</p>
+              </div>
+            </div>
+            <button
+              onClick={handleSyncSheet}
+              disabled={syncing}
+              className="btn-primary flex items-center gap-2 text-sm"
+            >
+              {syncing
+                ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                : <RefreshCw size={13} />}
+              {syncing ? 'Syncing…' : 'Sync Now'}
+            </button>
+          </div>
+          {syncMsg && (
+            <p className={`text-xs mt-3 ${syncMsg.includes('failed') || syncMsg.includes('Failed') ? 'text-coral' : 'text-emerald-400'}`}>
+              {syncMsg}
+            </p>
+          )}
         </div>
 
         {/* Message templates */}

@@ -23,6 +23,8 @@ export type Contact = {
   id: string
   name: string
   phone: string
+  status: string | null
+  remark: string | null
   tags: string[]
   created_at: string
 }

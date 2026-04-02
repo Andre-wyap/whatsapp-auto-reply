@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import axios from 'axios'
 import { supabase } from '../services/supabase'
 import { sock, connectionStatus } from '../whatsapp/connection'
 
@@ -15,12 +16,12 @@ router.get('/', async (_req, res) => {
 })
 
 router.post('/', async (req, res) => {
-  const { name, phone, tags } = req.body
+  const { name, phone, tags, status, remark } = req.body
   if (!name || !phone) { res.status(400).json({ error: 'name and phone required' }); return }
 
   const { data, error } = await supabase
     .from('contacts')
-    .insert({ name, phone, tags: tags ?? [] })
+    .upsert({ name, phone, tags: tags ?? [], status: status ?? null, remark: remark ?? null }, { onConflict: 'phone' })
     .select()
     .single()
 
@@ -49,6 +50,30 @@ router.delete('/:id', async (req, res) => {
 
   if (error) { res.status(500).json({ error: error.message }); return }
   res.status(204).send()
+})
+
+const VALID_STATUSES = ['Approached', 'Send quote', 'Follow up', 'Appt', 'Potential', 'Closed', 'Red', 'KIV Red']
+
+router.get('/statuses', (_req, res) => {
+  res.json(VALID_STATUSES)
+})
+
+router.post('/sync-sheet', async (_req, res) => {
+  const syncUrl = process.env.N8N_CONTACT_SYNC_URL
+  if (!syncUrl) {
+    res.status(500).json({ error: 'N8N_CONTACT_SYNC_URL env var not set' })
+    return
+  }
+  try {
+    await axios.post(syncUrl, {}, {
+      headers: { Authorization: `Bearer ${process.env.API_KEY}` },
+      timeout: 10000,
+    })
+    res.json({ ok: true })
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    res.status(502).json({ error: `Failed to trigger n8n: ${message}` })
+  }
 })
 
 router.post('/sync', async (_req, res) => {

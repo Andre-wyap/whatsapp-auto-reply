@@ -44,6 +44,8 @@ export default function BlastPage() {
   const [customMsg, setCustomMsg] = useState('')
   const [selectedContacts, setSelectedContacts] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
+  const [statuses, setStatuses] = useState<string[]>([])
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([])
 
   useEffect(() => {
     api.blast.list().then((d) => { setCampaigns(d as BlastCampaign[]); setLoading(false) })
@@ -60,12 +62,16 @@ export default function BlastPage() {
 
   async function openModal() {
     setModalOpen(true)
-    const [c, t] = await Promise.all([
+    setSelectedStatuses([])
+    setSelectedContacts([])
+    const [c, t, s] = await Promise.all([
       api.contacts.list() as Promise<Contact[]>,
       api.templates.list() as Promise<MessageTemplate[]>,
+      api.contacts.statuses(),
     ])
     setContacts(c)
     setTemplates(t)
+    setStatuses(s)
     if (t.length > 0) setTemplateId(t[0].id)
   }
 
@@ -100,6 +106,22 @@ export default function BlastPage() {
   function toggleContact(id: string) {
     setSelectedContacts((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
   }
+
+  function toggleStatus(status: string) {
+    setSelectedStatuses((prev) => {
+      const next = prev.includes(status) ? prev.filter((s) => s !== status) : [...prev, status]
+      // Auto-select all contacts matching the new status filter
+      const filtered = contacts.filter((c) =>
+        next.length === 0 || (c.status && next.includes(c.status))
+      )
+      setSelectedContacts(filtered.map((c) => c.id))
+      return next
+    })
+  }
+
+  const visibleContacts = selectedStatuses.length === 0
+    ? contacts
+    : contacts.filter((c) => c.status && selectedStatuses.includes(c.status))
 
   return (
     <div className="h-full flex flex-col">
@@ -230,6 +252,38 @@ export default function BlastPage() {
                 )}
               </div>
 
+              {/* Status filter pills */}
+              {statuses.length > 0 && (
+                <div>
+                  <label className="label">Filter by Status</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {statuses.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => toggleStatus(s)}
+                        className={`text-xs px-3 py-1 rounded-full border transition-colors ${
+                          selectedStatuses.includes(s)
+                            ? 'bg-teal/20 text-teal border-teal/30'
+                            : 'bg-white/5 text-slate-400 border-white/10 hover:border-white/20'
+                        }`}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                  {selectedStatuses.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => { setSelectedStatuses([]); setSelectedContacts([]) }}
+                      className="text-[11px] text-slate-500 hover:text-white mt-1.5 transition-colors"
+                    >
+                      Clear filter
+                    </button>
+                  )}
+                </div>
+              )}
+
               {/* Contact selection */}
               <div>
                 <label className="label">Recipients ({selectedContacts.length} selected)</label>
@@ -237,7 +291,7 @@ export default function BlastPage() {
                   {contacts.length === 0 ? (
                     <p className="text-xs text-slate-500 py-2">No contacts. Add some first.</p>
                   ) : (
-                    contacts.map((c) => (
+                    visibleContacts.map((c) => (
                       <label key={c.id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer">
                         <input
                           type="checkbox"
@@ -248,6 +302,9 @@ export default function BlastPage() {
                         <span className="flex-1 min-w-0">
                           <span className="text-sm text-white">{c.name}</span>
                           <span className="text-xs text-slate-500 ml-2">{c.phone}</span>
+                          {c.status && (
+                            <span className="text-[10px] text-slate-600 ml-2 bg-white/5 px-1.5 py-0.5 rounded-full">{c.status}</span>
+                          )}
                         </span>
                       </label>
                     ))

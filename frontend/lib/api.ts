@@ -33,6 +33,8 @@ export const api = {
   contacts: {
     list: () => req('/api/contacts'),
     sync: () => req('/api/contacts/sync', { method: 'POST' }),
+    statuses: () => req<string[]>('/api/contacts/statuses'),
+    syncSheet: () => req('/api/contacts/sync-sheet', { method: 'POST' }),
     create: (data: object) =>
       req('/api/contacts', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: object) =>
