@@ -43,7 +43,7 @@ export default function SettingsPage() {
     setSyncing(true)
     setSyncMsg(null)
     try {
-      await api.contacts.syncSheet()
+      await api.contacts.sync()
       setSyncMsg('Sync triggered — contacts will update shortly')
     } catch (err: unknown) {
       setSyncMsg(err instanceof Error ? err.message : 'Sync failed')
@@ -129,7 +129,7 @@ export default function SettingsPage() {
               </div>
               <div>
                 <p className="text-sm font-medium text-white">Sync Contacts</p>
-                <p className="text-xs text-slate-500 mt-0.5">Pull latest leads from Google Sheet</p>
+                <p className="text-xs text-slate-500 mt-0.5">Import contacts from your WhatsApp</p>
               </div>
             </div>
             <button
