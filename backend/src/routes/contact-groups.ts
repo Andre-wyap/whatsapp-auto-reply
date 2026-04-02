@@ -67,7 +67,7 @@ router.get('/:id/contacts', async (req, res) => {
 
   // Flatten: merge contact fields with membership status
   const result = (data ?? []).map((row) => ({
-    ...(row.contacts as Record<string, unknown>),
+    ...(row.contacts as unknown as Record<string, unknown>),
     status: row.status,
     added_at: row.added_at,
   }))
