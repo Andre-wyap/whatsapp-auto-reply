@@ -8,6 +8,7 @@ import sendRouter from './routes/send'
 import statusRouter from './routes/status'
 import chatsRouter from './routes/chats'
 import contactsRouter from './routes/contacts'
+import contactGroupsRouter from './routes/contact-groups'
 import templatesRouter from './routes/templates'
 import blastRouter from './routes/blast'
 import settingsRouter from './routes/settings'
@@ -29,6 +30,7 @@ app.use('/api', apiKeyAuth)
 app.use('/api/send', sendRouter)
 app.use('/api/chats', chatsRouter)
 app.use('/api/contacts', contactsRouter)
+app.use('/api/contact-groups', contactGroupsRouter)
 app.use('/api/templates', templatesRouter)
 app.use('/api/blast', blastRouter)
 app.use('/api/settings', settingsRouter)

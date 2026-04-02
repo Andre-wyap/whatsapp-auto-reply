@@ -3,15 +3,15 @@
 import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
 import { supabase } from '@/lib/supabase'
-import type { BlastCampaign, Contact, MessageTemplate } from '@/lib/types'
-import { Send, Plus, Play, Pause, X, Check, ChevronDown, ChevronUp } from 'lucide-react'
+import type { BlastCampaign, Contact, ContactGroup, MessageTemplate } from '@/lib/types'
+import { Send, Plus, Play, Pause, X, Check, ChevronDown, ChevronUp, FolderOpen } from 'lucide-react'
 
 const STATUS_STYLE: Record<string, string> = {
-  draft: 'bg-white/5 text-slate-400 border-white/10',
-  running: 'bg-teal/15 text-teal border-teal/25',
-  paused: 'bg-amber/15 text-amber border-amber/25',
+  draft:     'bg-white/5 text-slate-400 border-white/10',
+  running:   'bg-teal/15 text-teal border-teal/25',
+  paused:    'bg-amber/15 text-amber border-amber/25',
   completed: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25',
-  failed: 'bg-coral/15 text-coral border-coral/25',
+  failed:    'bg-coral/15 text-coral border-coral/25',
 }
 
 function Progress({ sent, total }: { sent: number; total: number }) {
@@ -30,51 +30,117 @@ function Progress({ sent, total }: { sent: number; total: number }) {
 }
 
 export default function BlastPage() {
-  const [campaigns, setCampaigns] = useState<BlastCampaign[]>([])
-  const [loading, setLoading] = useState(true)
-  const [modalOpen, setModalOpen] = useState(false)
-  const [contacts, setContacts] = useState<Contact[]>([])
-  const [templates, setTemplates] = useState<MessageTemplate[]>([])
+  const [campaigns, setCampaigns]   = useState<BlastCampaign[]>([])
+  const [loading, setLoading]       = useState(true)
+  const [modalOpen, setModalOpen]   = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   // Form state
-  const [name, setName] = useState('')
-  const [mode, setMode] = useState<'template' | 'custom'>('template')
+  const [name, setName]             = useState('')
+  const [mode, setMode]             = useState<'template' | 'custom'>('template')
   const [templateId, setTemplateId] = useState('')
-  const [customMsg, setCustomMsg] = useState('')
-  const [selectedContacts, setSelectedContacts] = useState<string[]>([])
-  const [saving, setSaving] = useState(false)
-  const [statuses, setStatuses] = useState<string[]>([])
-  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([])
+  const [customMsg, setCustomMsg]   = useState('')
+  const [saving, setSaving]         = useState(false)
 
+  // Group → Status → Contacts chain
+  const [groups, setGroups]                   = useState<ContactGroup[]>([])
+  const [selectedGroupId, setSelectedGroupId] = useState<string>('')
+  const [groupContacts, setGroupContacts]     = useState<Contact[]>([])
+  const [groupStatuses, setGroupStatuses]     = useState<string[]>([])
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([])
+  const [selectedContacts, setSelectedContacts] = useState<string[]>([])
+  const [templates, setTemplates]             = useState<MessageTemplate[]>([])
+  const [loadingContacts, setLoadingContacts] = useState(false)
+
+  // ── realtime campaign updates ──
   useEffect(() => {
     api.blast.list().then((d) => { setCampaigns(d as BlastCampaign[]); setLoading(false) })
 
     const channel = supabase
       .channel('blast-campaigns')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'blast_campaigns' }, (payload) => {
-        setCampaigns((prev) => prev.map((c) => c.id === (payload.new as BlastCampaign).id ? payload.new as BlastCampaign : c))
+        setCampaigns((prev) => prev.map((c) =>
+          c.id === (payload.new as BlastCampaign).id ? payload.new as BlastCampaign : c
+        ))
       })
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
   }, [])
 
+  // ── open modal: load groups + templates ──
   async function openModal() {
     setModalOpen(true)
+    setSelectedGroupId('')
+    setGroupContacts([])
+    setGroupStatuses([])
     setSelectedStatuses([])
     setSelectedContacts([])
-    const [c, t, s] = await Promise.all([
-      api.contacts.list() as Promise<Contact[]>,
+    setName('')
+    setCustomMsg('')
+
+    const [g, t] = await Promise.all([
+      api.contactGroups.list() as Promise<ContactGroup[]>,
       api.templates.list() as Promise<MessageTemplate[]>,
-      api.contacts.statuses(),
     ])
-    setContacts(c)
+    setGroups(g)
     setTemplates(t)
-    setStatuses(s)
     if (t.length > 0) setTemplateId(t[0].id)
   }
 
+  // ── when group changes: load its contacts + statuses ──
+  async function handleGroupChange(groupId: string) {
+    setSelectedGroupId(groupId)
+    setSelectedStatuses([])
+    setSelectedContacts([])
+    setGroupContacts([])
+    setGroupStatuses([])
+
+    if (!groupId) return
+
+    setLoadingContacts(true)
+    try {
+      const [contacts, statuses] = await Promise.all([
+        api.contactGroups.contacts(groupId) as Promise<Contact[]>,
+        api.contactGroups.statuses(groupId),
+      ])
+      setGroupContacts(contacts)
+      setGroupStatuses(statuses)
+      // Auto-select all contacts in this group
+      setSelectedContacts(contacts.map((c) => c.id))
+    } finally {
+      setLoadingContacts(false)
+    }
+  }
+
+  // ── toggle a status pill: filters visible + selected contacts ──
+  function toggleStatus(status: string) {
+    setSelectedStatuses((prev) => {
+      const next = prev.includes(status)
+        ? prev.filter((s) => s !== status)
+        : [...prev, status]
+
+      const visible = next.length === 0
+        ? groupContacts
+        : groupContacts.filter((c) => c.status && next.includes(c.status))
+
+      setSelectedContacts(visible.map((c) => c.id))
+      return next
+    })
+  }
+
+  function toggleContact(id: string) {
+    setSelectedContacts((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    )
+  }
+
+  // ── visible contacts (filtered by selected statuses) ──
+  const visibleContacts = selectedStatuses.length === 0
+    ? groupContacts
+    : groupContacts.filter((c) => c.status && selectedStatuses.includes(c.status))
+
+  // ── create campaign ──
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true)
@@ -87,7 +153,6 @@ export default function BlastPage() {
       }) as BlastCampaign
       setCampaigns((prev) => [campaign, ...prev])
       setModalOpen(false)
-      setName(''); setCustomMsg(''); setSelectedContacts([])
     } finally {
       setSaving(false)
     }
@@ -103,26 +168,7 @@ export default function BlastPage() {
     setCampaigns((prev) => prev.map((c) => c.id === id ? { ...c, status: 'paused' } : c))
   }
 
-  function toggleContact(id: string) {
-    setSelectedContacts((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
-  }
-
-  function toggleStatus(status: string) {
-    setSelectedStatuses((prev) => {
-      const next = prev.includes(status) ? prev.filter((s) => s !== status) : [...prev, status]
-      // Auto-select all contacts matching the new status filter
-      const filtered = contacts.filter((c) =>
-        next.length === 0 || (c.status && next.includes(c.status))
-      )
-      setSelectedContacts(filtered.map((c) => c.id))
-      return next
-    })
-  }
-
-  const visibleContacts = selectedStatuses.length === 0
-    ? contacts
-    : contacts.filter((c) => c.status && selectedStatuses.includes(c.status))
-
+  // ─────────────────────────────────────────────────────────
   return (
     <div className="h-full flex flex-col">
       <div className="px-5 pt-6 pb-4 shrink-0 flex items-start justify-between">
@@ -136,6 +182,7 @@ export default function BlastPage() {
         </button>
       </div>
 
+      {/* Campaign list */}
       <div className="flex-1 overflow-y-auto px-4 pb-2 space-y-3">
         {loading ? (
           Array.from({ length: 3 }).map((_, i) => (
@@ -184,7 +231,7 @@ export default function BlastPage() {
               <Progress sent={c.sent_count} total={c.total_recipients} />
               {expandedId === c.id && (
                 <div className="mt-3 pt-3 border-t border-white/5 text-xs text-slate-500 space-y-1">
-                  {c.started_at && <p>Started: {new Date(c.started_at).toLocaleString()}</p>}
+                  {c.started_at   && <p>Started: {new Date(c.started_at).toLocaleString()}</p>}
                   {c.completed_at && <p>Completed: {new Date(c.completed_at).toLocaleString()}</p>}
                   <p>Created: {new Date(c.created_at).toLocaleString()}</p>
                 </div>
@@ -194,10 +241,10 @@ export default function BlastPage() {
         )}
       </div>
 
-      {/* New campaign modal */}
+      {/* ── New campaign modal ── */}
       {modalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-4">
-          <div className="glass-high rounded-card w-full max-w-md p-6 max-h-[85vh] overflow-y-auto">
+          <div className="glass-high rounded-card w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-5">
               <h2 className="font-display text-lg font-semibold text-white">New Campaign</h2>
               <button onClick={() => setModalOpen(false)} className="text-slate-500 hover:text-white transition-colors">
@@ -205,13 +252,17 @@ export default function BlastPage() {
               </button>
             </div>
 
-            <form onSubmit={handleCreate} className="space-y-4">
+            <form onSubmit={handleCreate} className="space-y-5">
+
+              {/* Campaign name */}
               <div>
                 <label className="label">Campaign Name</label>
-                <input className="input" required value={name} onChange={(e) => setName(e.target.value)} placeholder="March Promo" />
+                <input className="input" required value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="March Promo" />
               </div>
 
-              {/* Message source toggle */}
+              {/* Message */}
               <div>
                 <label className="label">Message</label>
                 <div className="flex rounded-xl overflow-hidden border border-white/8 mb-3">
@@ -224,98 +275,138 @@ export default function BlastPage() {
                     Custom
                   </button>
                 </div>
-
                 {mode === 'template' ? (
                   templates.length === 0 ? (
                     <p className="text-xs text-slate-500">No templates yet — create one in Settings.</p>
                   ) : (
-                    <select
-                      className="input"
-                      value={templateId}
+                    <select className="input" value={templateId}
                       onChange={(e) => setTemplateId(e.target.value)}
-                      required={mode === 'template'}
-                    >
+                      required={mode === 'template'}>
                       {templates.map((t) => (
                         <option key={t.id} value={t.id}>{t.name}</option>
                       ))}
                     </select>
                   )
                 ) : (
-                  <textarea
-                    className="input resize-none"
-                    rows={4}
+                  <textarea className="input resize-none" rows={4}
                     required={mode === 'custom'}
                     value={customMsg}
                     onChange={(e) => setCustomMsg(e.target.value)}
-                    placeholder="Hello {{name}}, your order is ready!"
-                  />
+                    placeholder="Hello {{name}}, your order is ready!" />
                 )}
               </div>
 
-              {/* Status filter pills */}
-              {statuses.length > 0 && (
-                <div>
-                  <label className="label">Filter by Status</label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {statuses.map((s) => (
-                      <button
-                        key={s}
-                        type="button"
-                        onClick={() => toggleStatus(s)}
-                        className={`text-xs px-3 py-1 rounded-full border transition-colors ${
-                          selectedStatuses.includes(s)
-                            ? 'bg-teal/20 text-teal border-teal/30'
-                            : 'bg-white/5 text-slate-400 border-white/10 hover:border-white/20'
-                        }`}
-                      >
-                        {s}
-                      </button>
+              {/* ── Step 1: Pick a group ── */}
+              <div>
+                <label className="label flex items-center gap-1.5">
+                  <FolderOpen size={13} className="text-teal" />
+                  Step 1 — Pick a Group
+                </label>
+                {groups.length === 0 ? (
+                  <p className="text-xs text-slate-500">No groups yet — create one in Contacts.</p>
+                ) : (
+                  <select className="input" value={selectedGroupId}
+                    onChange={(e) => handleGroupChange(e.target.value)}>
+                    <option value="">— select a group —</option>
+                    {groups.map((g) => (
+                      <option key={g.id} value={g.id}>{g.name}</option>
                     ))}
-                  </div>
-                  {selectedStatuses.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => { setSelectedStatuses([]); setSelectedContacts([]) }}
-                      className="text-[11px] text-slate-500 hover:text-white mt-1.5 transition-colors"
-                    >
-                      Clear filter
-                    </button>
+                  </select>
+                )}
+              </div>
+
+              {/* ── Step 2: Filter by status (auto-loads after group selected) ── */}
+              {selectedGroupId && (
+                <div>
+                  <label className="label">
+                    Step 2 — Filter by Status
+                    <span className="text-slate-600 font-normal ml-1">(optional — leave blank for all)</span>
+                  </label>
+                  {loadingContacts ? (
+                    <div className="flex gap-1.5">
+                      {Array.from({ length: 3 }).map((_, i) => (
+                        <div key={i} className="h-7 w-20 rounded-full bg-white/5 animate-pulse" />
+                      ))}
+                    </div>
+                  ) : groupStatuses.length === 0 ? (
+                    <p className="text-xs text-slate-500">No statuses found in this group.</p>
+                  ) : (
+                    <>
+                      <div className="flex flex-wrap gap-1.5">
+                        {groupStatuses.map((s) => (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => toggleStatus(s)}
+                            className={`text-xs px-3 py-1 rounded-full border transition-colors ${
+                              selectedStatuses.includes(s)
+                                ? 'bg-teal/20 text-teal border-teal/30'
+                                : 'bg-white/5 text-slate-400 border-white/10 hover:border-white/20'
+                            }`}
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                      {selectedStatuses.length > 0 && (
+                        <button type="button"
+                          onClick={() => { setSelectedStatuses([]); setSelectedContacts(groupContacts.map((c) => c.id)) }}
+                          className="text-[11px] text-slate-500 hover:text-white mt-1.5 transition-colors">
+                          Clear filter
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               )}
 
-              {/* Contact selection */}
-              <div>
-                <label className="label">Recipients ({selectedContacts.length} selected)</label>
-                <div className="space-y-1 max-h-44 overflow-y-auto">
-                  {contacts.length === 0 ? (
-                    <p className="text-xs text-slate-500 py-2">No contacts. Add some first.</p>
-                  ) : (
-                    visibleContacts.map((c) => (
-                      <label key={c.id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={selectedContacts.includes(c.id)}
-                          onChange={() => toggleContact(c.id)}
-                          className="accent-teal"
-                        />
-                        <span className="flex-1 min-w-0">
-                          <span className="text-sm text-white">{c.name}</span>
-                          <span className="text-xs text-slate-500 ml-2">{c.phone}</span>
-                          {c.status && (
-                            <span className="text-[10px] text-slate-600 ml-2 bg-white/5 px-1.5 py-0.5 rounded-full">{c.status}</span>
-                          )}
-                        </span>
-                      </label>
-                    ))
-                  )}
+              {/* ── Step 3: Confirm recipients ── */}
+              {selectedGroupId && !loadingContacts && (
+                <div>
+                  <label className="label">
+                    Step 3 — Recipients
+                    <span className="text-slate-400 ml-1">({selectedContacts.length} selected)</span>
+                  </label>
+                  <div className="space-y-0.5 max-h-44 overflow-y-auto">
+                    {visibleContacts.length === 0 ? (
+                      <p className="text-xs text-slate-500 py-2">No contacts match the selected statuses.</p>
+                    ) : (
+                      visibleContacts.map((c) => (
+                        <label key={c.id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={selectedContacts.includes(c.id)}
+                            onChange={() => toggleContact(c.id)}
+                            className="accent-teal"
+                          />
+                          <span className="flex-1 min-w-0">
+                            <span className="text-sm text-white">{c.name}</span>
+                            <span className="text-xs text-slate-500 ml-2">{c.phone}</span>
+                            {c.status && (
+                              <span className="text-[10px] text-slate-600 ml-2 bg-white/5 px-1.5 py-0.5 rounded-full">
+                                {c.status}
+                              </span>
+                            )}
+                          </span>
+                        </label>
+                      ))
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="flex gap-3 pt-1">
-                <button type="button" onClick={() => setModalOpen(false)} className="btn-ghost flex-1">Cancel</button>
-                <button type="submit" disabled={saving || selectedContacts.length === 0} className="btn-primary flex-1 flex items-center justify-center gap-2">
-                  {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Check size={14} />}
+                <button type="button" onClick={() => setModalOpen(false)} className="btn-ghost flex-1">
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving || selectedContacts.length === 0 || !selectedGroupId}
+                  className="btn-primary flex-1 flex items-center justify-center gap-2"
+                >
+                  {saving
+                    ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    : <Check size={14} />}
                   Create
                 </button>
               </div>

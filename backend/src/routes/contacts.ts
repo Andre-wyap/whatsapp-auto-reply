@@ -1,10 +1,10 @@
 import { Router } from 'express'
-import axios from 'axios'
 import { supabase } from '../services/supabase'
 import { sock, connectionStatus } from '../whatsapp/connection'
 
 const router = Router()
 
+// GET / — list all contacts (no group/status info here; use /contact-groups/:id/contacts for that)
 router.get('/', async (_req, res) => {
   const { data, error } = await supabase
     .from('contacts')
@@ -15,25 +15,39 @@ router.get('/', async (_req, res) => {
   res.json(data)
 })
 
+// POST / — upsert contact by phone, optionally link to a group with a status
+// Called by n8n during sheet sync: { name, phone, remark?, groupId?, status? }
 router.post('/', async (req, res) => {
-  const { name, phone, tags, status, remark } = req.body
+  const { name, phone, remark, groupId, status } = req.body
   if (!name || !phone) { res.status(400).json({ error: 'name and phone required' }); return }
 
-  const { data, error } = await supabase
+  const { data: contact, error } = await supabase
     .from('contacts')
-    .upsert({ name, phone, tags: tags ?? [], status: status ?? null, remark: remark ?? null }, { onConflict: 'phone' })
+    .upsert({ name, phone, remark: remark ?? null }, { onConflict: 'phone' })
     .select()
     .single()
 
   if (error) { res.status(500).json({ error: error.message }); return }
-  res.status(201).json(data)
+
+  if (groupId) {
+    const { error: memberError } = await supabase
+      .from('contact_group_members')
+      .upsert(
+        { contact_id: contact.id, group_id: groupId, status: status ?? null },
+        { onConflict: 'contact_id,group_id' }
+      )
+    if (memberError) { res.status(500).json({ error: memberError.message }); return }
+  }
+
+  res.status(201).json(contact)
 })
 
+// PUT /:id — update contact details (name, phone, remark only)
 router.put('/:id', async (req, res) => {
-  const { name, phone, tags } = req.body
+  const { name, phone, remark } = req.body
   const { data, error } = await supabase
     .from('contacts')
-    .update({ name, phone, tags })
+    .update({ name, phone, remark })
     .eq('id', req.params.id)
     .select()
     .single()
@@ -42,6 +56,24 @@ router.put('/:id', async (req, res) => {
   res.json(data)
 })
 
+// PATCH /:id/membership — update a contact's status within a specific group
+router.patch('/:id/membership', async (req, res) => {
+  const { groupId, status } = req.body
+  if (!groupId) { res.status(400).json({ error: 'groupId required' }); return }
+
+  const { data, error } = await supabase
+    .from('contact_group_members')
+    .update({ status })
+    .eq('contact_id', req.params.id)
+    .eq('group_id', groupId)
+    .select()
+    .single()
+
+  if (error) { res.status(500).json({ error: error.message }); return }
+  res.json(data)
+})
+
+// DELETE /:id — delete contact entirely (cascades all group memberships)
 router.delete('/:id', async (req, res) => {
   const { error } = await supabase
     .from('contacts')
@@ -52,37 +84,14 @@ router.delete('/:id', async (req, res) => {
   res.status(204).send()
 })
 
-const VALID_STATUSES = ['Approached', 'Send quote', 'Follow up', 'Appt', 'Potential', 'Closed', 'Red', 'KIV Red']
-
-router.get('/statuses', (_req, res) => {
-  res.json(VALID_STATUSES)
-})
-
-router.post('/sync-sheet', async (_req, res) => {
-  const syncUrl = process.env.N8N_CONTACT_SYNC_URL
-  if (!syncUrl) {
-    res.status(500).json({ error: 'N8N_CONTACT_SYNC_URL env var not set' })
-    return
-  }
-  try {
-    await axios.post(syncUrl, {}, {
-      headers: { Authorization: `Bearer ${process.env.API_KEY}` },
-      timeout: 10000,
-    })
-    res.json({ ok: true })
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err)
-    res.status(502).json({ error: `Failed to trigger n8n: ${message}` })
-  }
-})
-
+// POST /sync — pull contacts from WhatsApp (no group assignment)
 router.post('/sync', async (_req, res) => {
   if (!sock || connectionStatus !== 'open') {
     res.status(503).json({ error: 'WhatsApp not connected' })
     return
   }
 
-  const toUpsert: { name: string; phone: string; tags: string[] }[] = []
+  const toUpsert: { name: string; phone: string }[] = []
   const seen = new Set<string>()
 
   // Source 1: sock.contacts (populated on fresh QR scan)
@@ -95,7 +104,7 @@ router.post('/sync', async (_req, res) => {
     const phone = '+' + jid.replace(/@.*$/, '')
     if (seen.has(phone)) continue
     seen.add(phone)
-    toUpsert.push({ phone, name, tags: [] })
+    toUpsert.push({ phone, name })
   }
 
   // Source 2: chats table — anyone who has messaged you
@@ -107,13 +116,10 @@ router.post('/sync', async (_req, res) => {
   for (const chat of chats ?? []) {
     if (!chat.phone || seen.has(chat.phone)) continue
     seen.add(chat.phone)
-    toUpsert.push({ phone: chat.phone, name: chat.name ?? chat.phone, tags: [] })
+    toUpsert.push({ phone: chat.phone, name: chat.name ?? chat.phone })
   }
 
-  if (toUpsert.length === 0) {
-    res.json({ synced: 0 })
-    return
-  }
+  if (toUpsert.length === 0) { res.json({ synced: 0 }); return }
 
   const { error } = await supabase
     .from('contacts')

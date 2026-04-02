@@ -33,14 +33,29 @@ export const api = {
   contacts: {
     list: () => req('/api/contacts'),
     sync: () => req('/api/contacts/sync', { method: 'POST' }),
-    statuses: () => req<string[]>('/api/contacts/statuses'),
-    syncSheet: () => req('/api/contacts/sync-sheet', { method: 'POST' }),
     create: (data: object) =>
       req('/api/contacts', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: object) =>
       req(`/api/contacts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    updateMembership: (id: string, data: { groupId: string; status: string | null }) =>
+      req(`/api/contacts/${id}/membership`, { method: 'PATCH', body: JSON.stringify(data) }),
     delete: (id: string) =>
       req(`/api/contacts/${id}`, { method: 'DELETE' }),
+  },
+
+  contactGroups: {
+    list: () => req('/api/contact-groups'),
+    create: (data: object) =>
+      req('/api/contact-groups', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: object) =>
+      req(`/api/contact-groups/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: string) =>
+      req(`/api/contact-groups/${id}`, { method: 'DELETE' }),
+    contacts: (id: string) => req(`/api/contact-groups/${id}/contacts`),
+    statuses: (id: string) => req<string[]>(`/api/contact-groups/${id}/statuses`),
+    sync: (id: string) => req(`/api/contact-groups/${id}/sync`, { method: 'POST' }),
+    removeMember: (groupId: string, contactId: string) =>
+      req(`/api/contact-groups/${groupId}/members/${contactId}`, { method: 'DELETE' }),
   },
 
   templates: {

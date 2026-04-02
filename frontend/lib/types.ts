@@ -23,10 +23,20 @@ export type Contact = {
   id: string
   name: string
   phone: string
-  status: string | null
   remark: string | null
-  tags: string[]
   created_at: string
+  // Present when fetched via /contact-groups/:id/contacts
+  status?: string | null
+  added_at?: string | null
+}
+
+export type ContactGroup = {
+  id: string
+  name: string
+  sheet_url: string | null
+  description: string | null
+  created_at: string
+  contact_group_members?: [{ count: number }]
 }
 
 export type MessageTemplate = {

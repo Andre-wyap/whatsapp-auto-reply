@@ -13,9 +13,10 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    await sendMessage(chatId, message)
+    const result = await sendMessage(chatId, message)
 
     const timestamp = new Date().toISOString()
+    const waMessageId = result?.key?.id ?? null
 
     // Ensure chat row exists
     await supabase.from('chats').upsert(
@@ -25,6 +26,7 @@ router.post('/', async (req, res) => {
 
     await supabase.from('messages').insert({
       chat_id: chatId,
+      wa_message_id: waMessageId,
       body: message,
       direction: 'outbound',
       status: 'sent',
