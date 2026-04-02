@@ -32,7 +32,8 @@ export async function enqueueCampaign(campaignId: string) {
 
   const messageTemplate =
     campaign.custom_message ||
-    (Array.isArray(campaign.message_templates) ? campaign.message_templates[0] : campaign.message_templates as { body: string } | null)?.body
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ((campaign as any).message_templates as { body: string } | null)?.body
 
   if (!messageTemplate) throw new Error('Campaign has no message')
 
