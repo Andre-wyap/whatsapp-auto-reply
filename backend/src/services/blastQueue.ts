@@ -45,7 +45,7 @@ export async function enqueueCampaign(campaignId: string) {
   if (!recipients?.length) return
 
   for (const r of recipients) {
-    const contact = r.contacts as { name: string; phone: string } | null
+    const contact = (Array.isArray(r.contacts) ? r.contacts[0] : r.contacts) as { name: string; phone: string } | null
     if (!contact) continue
 
     const message = messageTemplate
