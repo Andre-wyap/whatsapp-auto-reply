@@ -61,7 +61,7 @@ router.post('/sync', async (_req, res) => {
   const seen = new Set<string>()
 
   // Source 1: sock.contacts (populated on fresh QR scan)
-  const rawContacts = (sock.contacts ?? {}) as Record<string, { id: string; name?: string; notify?: string; verifiedName?: string }>
+  const rawContacts = ((sock as unknown as Record<string, unknown>).contacts ?? {}) as Record<string, { id: string; name?: string; notify?: string; verifiedName?: string }>
   for (const [jid, contact] of Object.entries(rawContacts)) {
     if (!jid.match(/^\d+@(s\.whatsapp\.net|lid)$/)) continue
     const name = contact.name ?? contact.notify ?? contact.verifiedName

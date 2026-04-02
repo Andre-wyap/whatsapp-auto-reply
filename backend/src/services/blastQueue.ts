@@ -32,7 +32,7 @@ export async function enqueueCampaign(campaignId: string) {
 
   const messageTemplate =
     campaign.custom_message ||
-    (campaign.message_templates as { body: string } | null)?.body
+    (Array.isArray(campaign.message_templates) ? campaign.message_templates[0] : campaign.message_templates as { body: string } | null)?.body
 
   if (!messageTemplate) throw new Error('Campaign has no message')
 
