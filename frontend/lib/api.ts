@@ -69,36 +69,4 @@ export const api = {
     update: (data: object) =>
       req('/api/settings', { method: 'PUT', body: JSON.stringify(data) }),
   },
-
-  crm: {
-    fields: {
-      list: () => req('/api/crm/fields'),
-      create: (data: object) =>
-        req('/api/crm/fields', { method: 'POST', body: JSON.stringify(data) }),
-      update: (id: string, data: object) =>
-        req(`/api/crm/fields/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-      delete: (id: string) =>
-        req(`/api/crm/fields/${id}`, { method: 'DELETE' }),
-    },
-    contacts: {
-      list: () => req('/api/crm/contacts'),
-      create: (data: object) =>
-        req('/api/crm/contacts', { method: 'POST', body: JSON.stringify(data) }),
-      update: (id: string, data: object) =>
-        req(`/api/crm/contacts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-      delete: (id: string) =>
-        req(`/api/crm/contacts/${id}`, { method: 'DELETE' }),
-      send: (id: string, data: { message?: string; template_id?: string }) =>
-        req(`/api/crm/contacts/${id}/send`, { method: 'POST', body: JSON.stringify(data) }),
-      import: (csv: string) =>
-        req('/api/crm/contacts/import', { method: 'POST', body: JSON.stringify({ csv }) }),
-      export: async (): Promise<string> => {
-        const res = await fetch(`${BASE}/api/crm/contacts/export`, {
-          headers: { Authorization: `Bearer ${KEY}` },
-        })
-        if (!res.ok) throw new Error('Export failed')
-        return res.text()
-      },
-    },
-  },
 }

@@ -2,12 +2,11 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { MessageCircle, Users, Send, Settings, QrCode, Database } from 'lucide-react'
+import { MessageCircle, Users, Send, Settings, QrCode } from 'lucide-react'
 
 const tabs = [
   { href: '/chat', icon: MessageCircle, label: 'Chats' },
   { href: '/contacts', icon: Users, label: 'Contacts' },
-  { href: '/crm', icon: Database, label: 'CRM' },
   { href: '/blast', icon: Send, label: 'Blast' },
   { href: '/settings', icon: Settings, label: 'Settings' },
   { href: '/setup', icon: QrCode, label: 'Setup' },

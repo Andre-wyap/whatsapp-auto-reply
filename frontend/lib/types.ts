@@ -69,24 +69,3 @@ export type ConnectionStatus = {
   status: 'connecting' | 'open' | 'close'
   qr: string | null
 }
-
-export type CrmField = {
-  id: string
-  name: string
-  key: string
-  type: 'text' | 'number' | 'date' | 'select' | 'boolean'
-  options: string[]
-  required: boolean
-  sort_order: number
-  created_at: string
-}
-
-export type CrmContact = {
-  id: string
-  name: string
-  phone: string | null
-  email: string | null
-  custom_data: Record<string, string | number | boolean>
-  created_at: string
-  updated_at: string
-}

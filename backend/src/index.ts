@@ -11,7 +11,6 @@ import contactsRouter from './routes/contacts'
 import templatesRouter from './routes/templates'
 import blastRouter from './routes/blast'
 import settingsRouter from './routes/settings'
-import crmRouter from './routes/crm'
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -33,7 +32,6 @@ app.use('/api/contacts', contactsRouter)
 app.use('/api/templates', templatesRouter)
 app.use('/api/blast', blastRouter)
 app.use('/api/settings', settingsRouter)
-app.use('/api/crm', crmRouter)
 
 app.listen(PORT, () => {
   console.log(`Backend listening on port ${PORT}`)
